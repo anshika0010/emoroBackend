@@ -285,7 +285,6 @@ export const updateProduct = async (req, res) => {
     }
 };
 
-
 export const deleteProduct = async (req, res) => {
     try {
         const { id } = req.params;
@@ -500,6 +499,117 @@ export const updateProductStatus = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: err.message,
+        });
+    }
+};
+
+export const searchProducts = async (req, res) => {
+    try {
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.max(Number(req.query.limit) || 20, 1);
+        const search = req.query.q?.trim() || "";
+
+        const skip = (page - 1) * limit;
+
+        if (!search) {
+            return res.status(400).json({
+                success: false,
+                message: "Search query is required"
+            });
+        }
+
+        const searchRegex = new RegExp(search, "i");
+
+        const filter = {
+            status: true,
+            $or: [
+                { name: searchRegex },
+                { slug: searchRegex },
+                { shortDes: searchRegex },
+                { des: searchRegex }
+            ]
+        };
+
+        const [products, total] = await Promise.all([
+            ProductModel.find(filter)
+                .skip(skip)
+                .limit(limit)
+                .sort({ createdAt: -1 }),
+
+            ProductModel.countDocuments(filter)
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            products,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            },
+            query: search
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: err.message
+        });
+    }
+};
+
+export const searchProductsByAdmin = async (req, res) => {
+    try {
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.max(Number(req.query.limit) || 20, 1);
+        const search = req.query.q?.trim() || "";
+
+        const skip = (page - 1) * limit;
+
+        if (!search) {
+            return res.status(400).json({
+                success: false,
+                message: "Search query is required"
+            });
+        }
+
+        const searchRegex = new RegExp(search, "i");
+
+        const filter = {
+            $or: [
+                { name: searchRegex },
+                { slug: searchRegex },
+                { shortDes: searchRegex },
+                { des: searchRegex }
+            ]
+        };
+
+        const [products, total] = await Promise.all([
+            ProductModel.find(filter)
+                .skip(skip)
+                .limit(limit)
+                .sort({ createdAt: -1 }),
+
+            ProductModel.countDocuments(filter)
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            products,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            },
+            query: search
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: err.message
         });
     }
 };

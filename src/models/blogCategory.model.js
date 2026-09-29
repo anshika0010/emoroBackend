@@ -1,28 +1,12 @@
 import { Schema, model } from "mongoose";
 
-const productSchema = new Schema({
-    name: {
-        type: String
+const blogCategorySchema = new Schema({
+    name:String,
+    slug:String,
+    image:{
+        type:String,
+        default:null
     },
-    slug: {
-        type: String,
-        unique: true
-    },
-    des: {
-        type: String,
-    },
-    overView: {
-        type: String
-    },
-    shortDes: {
-        type: String
-    },
-    featureImage: {
-        type: String
-    },
-    image: [{
-        type: String
-    }],
     seo: {
         metaTitle: {
             type: String,
@@ -102,37 +86,13 @@ const productSchema = new Schema({
             trim: true,
         },
     },
-    faq: [
-        {
-            question: {
-                type: String
-            },
-            answer: {
-                type: String
-            }
-        }
-    ],
-    price: {
-        type: String
-    },
-    discountedPrice: {
-        type: String
-    },
-    review: [{
-        name: String,
-        rating: Number,
-        des: String,
-        image: [String]
-    }],
-    status: {
-        type: Boolean,
+    status:{
+        type:Boolean,
         default: true,
-        enum: [false, true]
+        enum:[true, false]
     }
-},
-    { timestamps: true }
-);
+},{timestamps: true});
 
-const productModel = model("Products", productSchema);
+const blogCategoryModel = model("blogcategory", blogCategorySchema);
 
-export default productModel
+export default blogCategoryModel;
