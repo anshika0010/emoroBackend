@@ -203,11 +203,14 @@ export const getCategoryById = async (req, res) => {
     try {
         const { id } = req.params;
 
-        if(!id){
-            return res.status(400).json({success:false, message: "Id is required"})
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Id is required"
+            });
         }
 
-        const category = await BlogCategoryModel.findById(id).select("status");
+        const category = await BlogCategoryModel.findById(id).select("status name slug");
 
         if (!category) {
             return res.status(404).json({
@@ -216,9 +219,14 @@ export const getCategoryById = async (req, res) => {
             });
         }
 
+        const blogs = await BlogModel.find({
+            categoryId: id
+        }).select("_id categoryId slug title description image status");
+
         return res.status(200).json({
             success: true,
-            category
+            category,
+            blogs
         });
     } catch (err) {
         return res.status(500).json({

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import {createBlog, updateBlog, deleteBlog, getBlogById, getBlogs, getBlogsByAdmin, searchBlogs} from "../controllers/blog.controller.js";
+import {createBlog, updateBlog, deleteBlog, getBlogBySlug, getBlogs, getBlogsByAdmin, searchBlogs} from "../controllers/blog.controller.js";
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
@@ -17,6 +17,6 @@ router.route("/:id").delete(deleteBlog);
 router.route("/dashboard").get(getBlogsByAdmin);
 router.route("/search").get(searchBlogs);
 router.route("/").get(getBlogs);
-router.route("/:id").get(getBlogById);
+router.route("/:slug").get(getBlogBySlug);
 
 export default router

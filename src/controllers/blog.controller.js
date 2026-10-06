@@ -141,16 +141,20 @@ export const getBlogsByAdmin = async (req, res) => {
     }
 };
 
-export const getBlogById = async (req, res) => {
+export const getBlogBySlug = async (req, res) => {
     try {
-        const { id } = req.params;
+        const { slug } = req.params;
 
-        if (!id) {
-            return res.status(400).json({ success: false, message: "Id is required" })
+        if (!slug) {
+            return res.status(400).json({
+                success: false,
+                message: "Slug is required"
+            });
         }
 
-        const blog = await BlogModel.findById(id).select("status")
-            .populate("categoryId","_id name");
+        const blog = await BlogModel.findOne({ slug })
+            .select("status")
+            .populate("categoryId", "_id name");
 
         if (!blog) {
             return res.status(404).json({
