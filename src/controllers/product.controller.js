@@ -307,9 +307,9 @@ export const deleteProduct = async (req, res) => {
 
         await ProductModel.findByIdAndDelete(id);
 
-        if (product.featuredImage) {
+        if (product.featureImage) {
             try {
-                await deleteFromCloudinary(product.featuredImage);
+                await deleteFromCloudinary(product.featureImage);
             } catch (error) {
                 console.error(
                     "Failed to delete featured image:",
