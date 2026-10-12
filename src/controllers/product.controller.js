@@ -505,8 +505,8 @@ export const updateProductStatus = async (req, res) => {
 
 export const searchProducts = async (req, res) => {
     try {
-        const page = Math.max(Number(req.query.page) || 1, 1);
-        const limit = Math.max(Number(req.query.limit) || 20, 1);
+        const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+        const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
         const search = req.query.q?.trim() || "";
 
         const skip = (page - 1) * limit;
@@ -518,7 +518,68 @@ export const searchProducts = async (req, res) => {
             });
         }
 
-        const searchRegex = new RegExp(search, "i");
+        const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const searchRegex = new RegExp(escapedSearch, "i");
+
+        const filter = {
+            status: true,
+            $or: [
+                { name: searchRegex },
+                { slug: searchRegex },
+                { shortDes: searchRegex },
+                { des: searchRegex },
+                {status:true}
+            ]
+        };
+
+        const [products, total] = await Promise.all([
+            ProductModel.find(filter)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+
+            ProductModel.countDocuments(filter)
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            products,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            },
+            query: search
+        });
+    } catch (err) {
+        console.error("Search products error:", err);
+
+        return res.status(500).json({
+            success: false,
+            message: err.message
+        });
+    }
+};
+
+export const searchProductsByAdmin = async (req, res) => {
+    try {
+        const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+        const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
+        const search = req.query.q?.trim() || "";
+
+        const skip = (page - 1) * limit;
+
+        if (!search) {
+            return res.status(400).json({
+                success: false,
+                message: "Search query is required"
+            });
+        }
+
+        const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const searchRegex = new RegExp(escapedSearch, "i");
 
         const filter = {
             status: true,
@@ -532,9 +593,10 @@ export const searchProducts = async (req, res) => {
 
         const [products, total] = await Promise.all([
             ProductModel.find(filter)
+                .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
-                .sort({ createdAt: -1 }),
+                .lean(),
 
             ProductModel.countDocuments(filter)
         ]);
@@ -550,63 +612,9 @@ export const searchProducts = async (req, res) => {
             },
             query: search
         });
-
     } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: err.message
-        });
-    }
-};
+        console.error("Search products error:", err);
 
-export const searchProductsByAdmin = async (req, res) => {
-    try {
-        const page = Math.max(Number(req.query.page) || 1, 1);
-        const limit = Math.max(Number(req.query.limit) || 20, 1);
-        const search = req.query.q?.trim() || "";
-
-        const skip = (page - 1) * limit;
-
-        if (!search) {
-            return res.status(400).json({
-                success: false,
-                message: "Search query is required"
-            });
-        }
-
-        const searchRegex = new RegExp(search, "i");
-
-        const filter = {
-            $or: [
-                { name: searchRegex },
-                { slug: searchRegex },
-                { shortDes: searchRegex },
-                { des: searchRegex }
-            ]
-        };
-
-        const [products, total] = await Promise.all([
-            ProductModel.find(filter)
-                .skip(skip)
-                .limit(limit)
-                .sort({ createdAt: -1 }),
-
-            ProductModel.countDocuments(filter)
-        ]);
-
-        return res.status(200).json({
-            success: true,
-            products,
-            pagination: {
-                total,
-                page,
-                limit,
-                totalPages: Math.ceil(total / limit)
-            },
-            query: search
-        });
-
-    } catch (err) {
         return res.status(500).json({
             success: false,
             message: err.message

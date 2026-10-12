@@ -152,11 +152,9 @@ export const getBlogBySlug = async (req, res) => {
             });
         }
 
-        const blog = await BlogModel.findOne({ slug })
-            .select("status")
-            .populate("categoryId", "_id name");
+        const blog = await BlogModel.findOne({ slug:slug, status:true })
 
-        if (!blog) {
+        if (!blog || blog === null) {
             return res.status(404).json({
                 success: false,
                 message: "Blog not found"
@@ -179,8 +177,8 @@ export const searchBlogs = async (req, res) => {
     try {
         const query = req.query.q?.trim() || "";
 
-        const page = Math.max(parseInt(req.query.page) || 1, 1);
-        const limit = Math.max(parseInt(req.query.limit) || 20, 1);
+        const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+        const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
         const skip = (page - 1) * limit;
 
         if (!query) {
@@ -190,7 +188,8 @@ export const searchBlogs = async (req, res) => {
             });
         }
 
-        const searchRegex = new RegExp(query, "i");
+        const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const searchRegex = new RegExp(escapedQuery, "i");
 
         const categories = await blogCategoryModel.find({
             $or: [
@@ -202,23 +201,27 @@ export const searchBlogs = async (req, res) => {
         const categoryIds = categories.map(category => category._id);
 
         const filter = {
-            $or: [
-                { title: searchRegex },
-                { slug: searchRegex },
-                { description: searchRegex },
-                { content: searchRegex },
-                { author: searchRegex },
-                { categoryId: { $in: categoryIds } },
-                { status: true }
+            $and: [
+                { status: true },
+                {
+                    $or: [
+                        { title: searchRegex },
+                        { slug: searchRegex },
+                        { description: searchRegex },
+                        { content: searchRegex },
+                        { author: searchRegex },
+                        { categoryId: { $in: categoryIds } }
+                    ]
+                }
             ]
         };
 
         const [blogs, total] = await Promise.all([
             BlogModel.find(filter)
-                .populate("categoryId")
                 .sort({ createdAt: -1 })
                 .skip(skip)
-                .limit(limit),
+                .limit(limit)
+                .lean(),
 
             BlogModel.countDocuments(filter)
         ]);
@@ -235,6 +238,8 @@ export const searchBlogs = async (req, res) => {
             }
         });
     } catch (err) {
+        console.error("Search blogs error:", err);
+
         return res.status(500).json({
             success: false,
             message: err.message
