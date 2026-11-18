@@ -13,7 +13,7 @@ export const createProductCategory = async (req, res) => {
             });
         }
 
-        const duplicate = await ProductCategoryModel.findOne({ slug: slug.trim() });
+        const duplicate = await ProductCategoryModel.findOne({ slug: slug.trim().toLowerCase() });
 
         if (duplicate) {
             return res.status(400).json({
@@ -24,7 +24,7 @@ export const createProductCategory = async (req, res) => {
 
         const category = await ProductCategoryModel.create({
             name: name.trim(),
-            slug: slug.trim(),
+            slug: slug.trim().toLowerCase(),
             des: des?.trim() || ""
         });
 
@@ -61,7 +61,7 @@ export const updateProductCategory = async (req, res) => {
         }
 
         const duplicate = await ProductCategoryModel.findOne({
-            slug: slug.trim(),
+            slug: slug.trim().toLowerCase(),
             _id: { $ne: id }
         });
 
@@ -70,7 +70,7 @@ export const updateProductCategory = async (req, res) => {
         }
 
         category.name = name.trim();
-        category.slug = slug.trim();
+        category.slug = slug.trim().toLowerCase();
         if (des !== undefined) category.des = des?.trim() || "";
 
         await category.save();
@@ -137,7 +137,7 @@ export const getProductCategoryBySlug = async (req, res) => {
     try {
         const { slug } = req.params;
 
-        const category = await ProductCategoryModel.findOne({ slug });
+        const category = await ProductCategoryModel.findOne({ slug: slug.toLowerCase() });
 
         if (!category) {
             return res.status(404).json({ success: false, message: "Category not found" });
@@ -156,7 +156,7 @@ export const getProductsByCategorySlug = async (req, res) => {
         const limit = Math.max(Number(req.query.limit) || 20, 1);
         const skip = (page - 1) * limit;
 
-        const category = await ProductCategoryModel.findOne({ slug });
+        const category = await ProductCategoryModel.findOne({ slug: slug.toLowerCase() });
 
         if (!category) {
             return res.status(404).json({ success: false, message: "Category not found" });

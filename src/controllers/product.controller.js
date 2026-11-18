@@ -14,15 +14,21 @@ const toNumberOrNull = (value) => {
 };
 
 // Validates categoryId and parses tags / weight / dimension / stock from the request body.
+// With partial = true (updates), fields not sent in the request are left out so existing values are kept.
 // Returns { error } or { data }.
-const parseProductExtras = async ({ categoryId, tags, weight, dimension, stock }) => {
-    if (!categoryId || !isValidObjectId(categoryId)) {
-        return { error: "Valid categoryId is required" };
-    }
+const parseProductExtras = async ({ categoryId, tags, weight, dimension, stock }, { partial = false } = {}) => {
+    const data = {};
 
-    const category = await ProductCategoryModel.findById(categoryId);
-    if (!category) {
-        return { error: "Category not found" };
+    if (!partial || categoryId !== undefined) {
+        if (!categoryId || !isValidObjectId(categoryId)) {
+            return { error: "Valid categoryId is required" };
+        }
+
+        const category = await ProductCategoryModel.findById(categoryId);
+        if (!category) {
+            return { error: "Category not found" };
+        }
+        data.categoryId = categoryId;
     }
 
     let parsedTags = [];
@@ -41,49 +47,49 @@ const parseProductExtras = async ({ categoryId, tags, weight, dimension, stock }
         }
         parsedTags = [...new Set(parsedTags.map((t) => String(t).trim().toLowerCase()).filter(Boolean))];
     }
+    if (!partial || tags !== undefined) data.tags = parsedTags;
 
-    let parsedWeight = {};
-    let parsedDimension = {};
-    try {
-        const w = parseJsonField(weight) || {};
-        parsedWeight = {
-            value: toNumberOrNull(w.value),
-            ...(w.unit && { unit: w.unit })
-        };
-    } catch (err) {
-        return { error: `Invalid weight: ${err.message}` };
-    }
-
-    try {
-        const d = parseJsonField(dimension) || {};
-        parsedDimension = {
-            length: toNumberOrNull(d.length),
-            width: toNumberOrNull(d.width),
-            height: toNumberOrNull(d.height),
-            ...(d.unit && { unit: d.unit })
-        };
-    } catch (err) {
-        return { error: `Invalid dimension: ${err.message}` };
-    }
-
-    let parsedStock = 0;
-    try {
-        parsedStock = toNumberOrNull(stock) ?? 0;
-        if (!Number.isInteger(parsedStock)) throw new Error("must be a whole number");
-    } catch (err) {
-        return { error: `Invalid stock: ${err.message}` };
-    }
-
-    return {
-        data: {
-            categoryId,
-            tags: parsedTags,
-            weight: parsedWeight,
-            dimension: parsedDimension,
-            stock: parsedStock
+    if (!partial || weight !== undefined) {
+        try {
+            const w = parseJsonField(weight) || {};
+            data.weight = {
+                value: toNumberOrNull(w.value),
+                unit: w.unit || "g"
+            };
+        } catch (err) {
+            return { error: `Invalid weight: ${err.message}` };
         }
-    };
+    }
+
+    if (!partial || dimension !== undefined) {
+        try {
+            const d = parseJsonField(dimension) || {};
+            data.dimension = {
+                length: toNumberOrNull(d.length),
+                width: toNumberOrNull(d.width),
+                height: toNumberOrNull(d.height),
+                unit: d.unit || "cm"
+            };
+        } catch (err) {
+            return { error: `Invalid dimension: ${err.message}` };
+        }
+    }
+
+    if (!partial || stock !== undefined) {
+        try {
+            const parsedStock = toNumberOrNull(stock) ?? 0;
+            if (!Number.isInteger(parsedStock)) throw new Error("must be a whole number");
+            data.stock = parsedStock;
+        } catch (err) {
+            return { error: `Invalid stock: ${err.message}` };
+        }
+    }
+
+    return { data };
 };
+
+const invalidIdResponse = (res) =>
+    res.status(400).json({ success: false, message: "Invalid product id" });
 
 
 export const addProduct = async (req, res) => {
@@ -232,6 +238,8 @@ export const updateProduct = async (req, res) => {
 
         const { name, slug, des, price, discountedPrice, overView, faq, seo, shortDes, status, categoryId, tags, weight, dimension, stock } = req.body;
 
+        if (!isValidObjectId(id)) return invalidIdResponse(res);
+
         const product = await ProductModel.findById(id);
 
         if (!product) {
@@ -283,12 +291,27 @@ export const updateProduct = async (req, res) => {
             });
         }
 
-        const extras = await parseProductExtras({ categoryId, tags, weight, dimension, stock });
+        const extras = await parseProductExtras(
+            { categoryId, tags, weight, dimension, stock },
+            { partial: true }
+        );
 
         if (extras.error) {
             return res.status(400).json({
                 success: false,
                 message: extras.error
+            });
+        }
+
+        const duplicateSlugCheck = await ProductModel.findOne({
+            slug: slug.trim(),
+            _id: { $ne: id }
+        });
+
+        if (duplicateSlugCheck) {
+            return res.status(400).json({
+                success: false,
+                message: "Duplicate Slug"
             });
         }
 
@@ -337,7 +360,10 @@ export const updateProduct = async (req, res) => {
                     )
                 );
 
+            const oldImages = product.image || [];
             imageResult = uploadedImages;
+
+            await Promise.all(oldImages.map((url) => deleteFromCloudinary(url)));
         }
 
         const updatedProduct = await ProductModel.findByIdAndUpdate(
@@ -393,12 +419,7 @@ export const deleteProduct = async (req, res) => {
     try {
         const { id } = req.params;
 
-        if (!id) {
-            return res.status(400).json({
-                success: false,
-                message: "ProductId is required"
-            });
-        }
+        if (!isValidObjectId(id)) return invalidIdResponse(res);
 
         const product = await ProductModel.findById(id);
 
@@ -422,15 +443,10 @@ export const deleteProduct = async (req, res) => {
             }
         }
 
-        if (product.image) {
-            try {
-                await deleteFromCloudinary(product.image);
-            } catch (error) {
-                console.error(
-                    "Failed to delete product image:",
-                    error.message
-                );
-            }
+        if (product.image?.length) {
+            await Promise.all(
+                product.image.map((url) => deleteFromCloudinary(url))
+            );
         }
 
         return res.status(200).json({
@@ -483,13 +499,6 @@ export const getProductByAdmin = async (req, res) => {
             ProductModel.countDocuments()
         ]);
 
-        if (products.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "Products not found"
-            });
-        }
-
         return res.status(200).json({
             success: true,
             products,
@@ -521,15 +530,8 @@ export const getProduct = async (req, res) => {
                 .skip(skip)
                 .limit(limit),
 
-            ProductModel.countDocuments()
+            ProductModel.countDocuments({ status: true })
         ]);
-
-        if (products.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "Products not found"
-            });
-        }
 
         return res.status(200).json({
             success: true,
@@ -554,12 +556,7 @@ export const updateProductStatus = async (req, res) => {
         const { id } = req.params;
         const { status } = req.body;
 
-        if (!id) {
-            return res.status(400).json({
-                success: false,
-                message: "Product ID is required",
-            });
-        }
+        if (!isValidObjectId(id)) return invalidIdResponse(res);
 
         if (status !== true && status !== false && status !== "true" && status !== "false") {
             return res.status(400).json({
@@ -688,7 +685,6 @@ export const searchProductsByAdmin = async (req, res) => {
         const searchRegex = new RegExp(escapedSearch, "i");
 
         const filter = {
-            status: true,
             $or: [
                 { name: searchRegex },
                 { slug: searchRegex },
