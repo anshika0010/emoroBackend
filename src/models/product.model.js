@@ -118,6 +118,31 @@ const productSchema = new Schema({
     discountedPrice: {
         type: String
     },
+    categoryId: {
+        type: Schema.Types.ObjectId,
+        ref: "productcategory",
+        required: true
+    },
+    tags: [{
+        type: String,
+        trim: true,
+        lowercase: true
+    }],
+    weight: {
+        value: { type: Number, min: 0, default: null },
+        unit: { type: String, enum: ["g", "kg", "ml", "l"], default: "g" }
+    },
+    dimension: {
+        length: { type: Number, min: 0, default: null },
+        width: { type: Number, min: 0, default: null },
+        height: { type: Number, min: 0, default: null },
+        unit: { type: String, enum: ["mm", "cm", "m", "in"], default: "cm" }
+    },
+    stock: {
+        type: Number,
+        min: 0,
+        default: 0
+    },
     review: [{
         name: String,
         rating: Number,

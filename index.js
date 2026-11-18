@@ -10,9 +10,10 @@ import BlogCategoryRouter from "./src/router/blogCategory.route.js";
 import ContactRouter from "./src/router/contact.route.js";
 import FaqRouter from "./src/router/faq.route.js";
 import InstagramRouter from "./src/router/instagram.route.js"
+import ProductCategoryRouter from "./src/router/productCategory.route.js";
 
 dotenv.config();
-databaseConfig();
+await databaseConfig();
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use("/emoro/api/blogcategory", BlogCategoryRouter);
 app.use("/emoro/api/contact", ContactRouter);
 app.use("/emoro/api/faq", FaqRouter);
 app.use("/emoro/api/instagram", InstagramRouter);
+app.use("/emoro/api/productcategory", ProductCategoryRouter);
 
 app.listen(port, () => {console.log(`Server run on PORT: ${port}`)})
 

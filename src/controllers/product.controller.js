@@ -1,11 +1,95 @@
 import ProductModel from "../models/product.model.js";
+import ProductCategoryModel from "../models/productCategory.model.js";
+import { isValidObjectId } from "mongoose";
 import { uploadToCloudinary, deleteFromCloudinary } from "../utils/cloudinary.js"
+
+const parseJsonField = (value) =>
+    typeof value === "string" ? JSON.parse(value) : value;
+
+const toNumberOrNull = (value) => {
+    if (value === undefined || value === null || value === "") return null;
+    const num = Number(value);
+    if (Number.isNaN(num) || num < 0) throw new Error("must be a non-negative number");
+    return num;
+};
+
+// Validates categoryId and parses tags / weight / dimension / stock from the request body.
+// Returns { error } or { data }.
+const parseProductExtras = async ({ categoryId, tags, weight, dimension, stock }) => {
+    if (!categoryId || !isValidObjectId(categoryId)) {
+        return { error: "Valid categoryId is required" };
+    }
+
+    const category = await ProductCategoryModel.findById(categoryId);
+    if (!category) {
+        return { error: "Category not found" };
+    }
+
+    let parsedTags = [];
+    if (tags !== undefined && tags !== "") {
+        if (Array.isArray(tags)) {
+            parsedTags = tags;
+        } else {
+            try {
+                parsedTags = JSON.parse(tags);
+            } catch {
+                parsedTags = String(tags).split(",");
+            }
+        }
+        if (!Array.isArray(parsedTags)) {
+            return { error: "Invalid tags format" };
+        }
+        parsedTags = [...new Set(parsedTags.map((t) => String(t).trim().toLowerCase()).filter(Boolean))];
+    }
+
+    let parsedWeight = {};
+    let parsedDimension = {};
+    try {
+        const w = parseJsonField(weight) || {};
+        parsedWeight = {
+            value: toNumberOrNull(w.value),
+            ...(w.unit && { unit: w.unit })
+        };
+    } catch (err) {
+        return { error: `Invalid weight: ${err.message}` };
+    }
+
+    try {
+        const d = parseJsonField(dimension) || {};
+        parsedDimension = {
+            length: toNumberOrNull(d.length),
+            width: toNumberOrNull(d.width),
+            height: toNumberOrNull(d.height),
+            ...(d.unit && { unit: d.unit })
+        };
+    } catch (err) {
+        return { error: `Invalid dimension: ${err.message}` };
+    }
+
+    let parsedStock = 0;
+    try {
+        parsedStock = toNumberOrNull(stock) ?? 0;
+        if (!Number.isInteger(parsedStock)) throw new Error("must be a whole number");
+    } catch (err) {
+        return { error: `Invalid stock: ${err.message}` };
+    }
+
+    return {
+        data: {
+            categoryId,
+            tags: parsedTags,
+            weight: parsedWeight,
+            dimension: parsedDimension,
+            stock: parsedStock
+        }
+    };
+};
 
 
 export const addProduct = async (req, res) => {
     try {
 
-        const { name, slug, des, price, discountedPrice, overView, faq, seo, shortDes, status } = req.body;
+        const { name, slug, des, price, discountedPrice, overView, faq, seo, shortDes, status, categoryId, tags, weight, dimension, stock } = req.body;
 
         const featureImage = req.files?.featureImage?.[0];
         const images = req.files?.image || [];
@@ -59,6 +143,15 @@ export const addProduct = async (req, res) => {
             });
         }
 
+        const extras = await parseProductExtras({ categoryId, tags, weight, dimension, stock });
+
+        if (extras.error) {
+            return res.status(400).json({
+                success: false,
+                message: extras.error
+            });
+        }
+
         const duplicateSlugCheck = await ProductModel.findOne({
             slug: slug.trim()
         });
@@ -104,6 +197,7 @@ export const addProduct = async (req, res) => {
             shortDes: shortDes.trim(),
             featureImage: featureImageResult.secure_url,
             image: imageResult,
+            ...extras.data,
             status:
                 status === true ||
                 status === "true"
@@ -136,7 +230,7 @@ export const updateProduct = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const { name, slug, des, price, discountedPrice, overView, faq, seo, shortDes, status } = req.body;
+        const { name, slug, des, price, discountedPrice, overView, faq, seo, shortDes, status, categoryId, tags, weight, dimension, stock } = req.body;
 
         const product = await ProductModel.findById(id);
 
@@ -186,6 +280,15 @@ export const updateProduct = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "Invalid SEO format"
+            });
+        }
+
+        const extras = await parseProductExtras({ categoryId, tags, weight, dimension, stock });
+
+        if (extras.error) {
+            return res.status(400).json({
+                success: false,
+                message: extras.error
             });
         }
 
@@ -251,6 +354,7 @@ export const updateProduct = async (req, res) => {
                 shortDes: shortDes.trim(),
                 featureImage: featureImageUrl,
                 image: imageResult,
+                ...extras.data,
                 status: status === true || status === "true"
             },
             {
@@ -350,7 +454,7 @@ export const getProductBySlug = async (req, res) => {
             return res.status(400).json({ success: false, message: "Slug is required" });
         }
 
-        const productDetails = await ProductModel.findOne({ slug: slug, status: true });
+        const productDetails = await ProductModel.findOne({ slug: slug, status: true }).populate("categoryId", "_id name slug");
 
         if (!productDetails) {
             return res.status(404).json({ success: false, message: "Product not found" })
@@ -372,6 +476,7 @@ export const getProductByAdmin = async (req, res) => {
 
         const [products, total] = await Promise.all([
             ProductModel.find()
+                .populate("categoryId", "_id name slug")
                 .skip(skip)
                 .limit(limit),
 
@@ -412,6 +517,7 @@ export const getProduct = async (req, res) => {
 
         const [products, total] = await Promise.all([
             ProductModel.find({ status: true })
+                .populate("categoryId", "_id name slug")
                 .skip(skip)
                 .limit(limit),
 
@@ -528,13 +634,13 @@ export const searchProducts = async (req, res) => {
                 { slug: searchRegex },
                 { shortDes: searchRegex },
                 { des: searchRegex },
-                {status:true}
+                { tags: searchRegex }
             ]
         };
 
         const [products, total] = await Promise.all([
             ProductModel.find(filter)
-                .sort({ createdAt: -1 })
+                .populate("categoryId", "_id name slug")
                 .skip(skip)
                 .limit(limit)
                 .lean(),
@@ -587,13 +693,14 @@ export const searchProductsByAdmin = async (req, res) => {
                 { name: searchRegex },
                 { slug: searchRegex },
                 { shortDes: searchRegex },
-                { des: searchRegex }
+                { des: searchRegex },
+                { tags: searchRegex }
             ]
         };
 
         const [products, total] = await Promise.all([
             ProductModel.find(filter)
-                .sort({ createdAt: -1 })
+                .populate("categoryId", "_id name slug")
                 .skip(skip)
                 .limit(limit)
                 .lean(),
